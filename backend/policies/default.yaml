@@ -1,0 +1,44 @@
+name: "ClawGuard Default Policy"
+version: "1.0"
+
+agent_rules:
+  research-agent:
+    - tool_name: "web_search"
+      allowed: true
+    - tool_name: "web_scrape"
+      allowed: true
+    - tool_name: "file.read"
+      allowed: true
+      conditions:
+        path_prefix: "/data/"
+    - tool_name: "shell.*"
+      allowed: false
+    - tool_name: "file.write"
+      allowed: false
+
+  coding-agent:
+    - tool_name: "file.*"
+      allowed: true
+    - tool_name: "shell.execute"
+      allowed: true
+    - tool_name: "web_*"
+      allowed: false
+
+  demo-agent:
+    - tool_name: "*"
+      allowed: true
+
+network_rules:
+  - pattern: "10.0.0.0/8"
+    action: "deny"
+    reason: "SSRF prevention: internal network (10.x) blocked"
+  - pattern: "172.16.0.0/12"
+    action: "deny"
+    reason: "SSRF prevention: internal network (172.16.x) blocked"
+  - pattern: "192.168.0.0/16"
+    action: "deny"
+    reason: "SSRF prevention: internal network (192.168.x) blocked"
+  - pattern: "169.254.169.254"
+    action: "deny"
+    reason: "SSRF prevention: cloud metadata endpoint blocked"
+max_response_size_kb: 512

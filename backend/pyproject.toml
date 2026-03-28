@@ -1,0 +1,18 @@
+[project]
+name = "clawguard"
+version = "0.1.0"
+description = "AI Agent Firewall - Secure agent-to-tool pipelines"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+    "aiosqlite>=0.20.0",
+    "pyyaml>=6.0",
+    "groq>=0.9.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "httpx"]

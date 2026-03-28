@@ -1,0 +1,37 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - DB_PATH=/app/data/clawguard.db
+      - CORS_ORIGINS=http://localhost:3000
+      - POLICY_PATH=policies/default.yaml
+    volumes:
+      - backend-data:/app/data
+
+  mock-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python -m uvicorn demo.mock_server:mock_app --host 0.0.0.0 --port 9999
+    ports:
+      - "9999:9999"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/api/ws
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:
