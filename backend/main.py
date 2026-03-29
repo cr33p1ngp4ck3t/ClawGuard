@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -8,11 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import config
 from api.dashboard import router as dashboard_router
+from api.scan import router as scan_router
 from api.ws import manager
 from audit.db import init_db
 from audit.models import ProxyRequest
 from policy.loader import load_policy
 from proxy.handler import handle_proxy_request
+
+config.setup_logging()
+logger = logging.getLogger("clawguard.main")
 
 app_policy = load_policy(config.POLICY_PATH)
 
@@ -20,9 +25,9 @@ app_policy = load_policy(config.POLICY_PATH)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    print(f"ClawGuard started | Policy: {app_policy.name} v{app_policy.version}")
-    print(f"Agents configured: {', '.join(app_policy.agent_rules.keys())}")
-    print(f"Network rules: {len(app_policy.network_rules)} deny rules active")
+    logger.info("ClawGuard started | Policy: %s v%s", app_policy.name, app_policy.version)
+    logger.info("Agents configured: %s", ", ".join(app_policy.agent_rules.keys()))
+    logger.info("Network rules: %d deny rules active", len(app_policy.network_rules))
     yield
 
 
@@ -42,6 +47,7 @@ app.add_middleware(
 )
 
 app.include_router(dashboard_router)
+app.include_router(scan_router)
 
 
 @app.get("/health")

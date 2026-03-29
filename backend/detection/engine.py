@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 
 from audit.models import DetectionResult, RiskLevel
@@ -9,6 +10,8 @@ from detection.patterns import (
     RISK_THRESHOLD_MEDIUM,
 )
 from detection.regex_detector import scan_for_injections_weighted
+
+logger = logging.getLogger("clawguard.detection")
 
 
 def _score_to_risk(score: float) -> RiskLevel:
@@ -57,7 +60,7 @@ async def analyze_content(
                     is_threat = True
                     cumulative_score = max(cumulative_score, 0.8)
         except Exception:
-            pass  # LLM is optional, never block on its failure
+            logger.warning("LLM classifier failed, falling back to regex-only", exc_info=True)
 
     confidence = min(cumulative_score, 1.0)
 

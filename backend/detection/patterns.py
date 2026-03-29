@@ -84,6 +84,24 @@ INJECTION_PATTERNS = [
         "weight": 0.75,
         "description": "Attempts to exfiltrate data to external URL",
     },
+    {
+        "name": "UNICODE_EVASION",
+        "pattern": re.compile(
+            r"[\u200b\u200c\u200d\u200e\u200f\u2060\u2061\u2062\u2063\ufeff]",
+        ),
+        "severity": RiskLevel.MEDIUM,
+        "weight": 0.4,
+        "description": "Zero-width or invisible Unicode characters used to evade detection",
+    },
+    {
+        "name": "ENCODED_INJECTION",
+        "pattern": re.compile(
+            r"(&#(?:x[0-9a-fA-F]+|\d+);){3,}|(%[0-9a-fA-F]{2}){5,}",
+        ),
+        "severity": RiskLevel.MEDIUM,
+        "weight": 0.5,
+        "description": "HTML entity or URL-encoded sequences that may hide injection payloads",
+    },
 ]
 
 # Threshold for blocking based on cumulative weight

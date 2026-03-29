@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import ipaddress
+import logging
 import socket
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from policy.models import Policy
+
+logger = logging.getLogger("clawguard.policy")
 
 
 @dataclass
@@ -15,15 +19,19 @@ class PolicyDecision:
     reason: str
 
 
-def _resolve_host(hostname: str) -> str | None:
-    """Resolve hostname to IP. Returns None if resolution fails."""
+async def _resolve_host(hostname: str) -> str | None:
+    """Resolve hostname to IP asynchronously. Returns None if resolution fails."""
+    loop = asyncio.get_running_loop()
     try:
-        return socket.gethostbyname(hostname)
+        infos = await loop.getaddrinfo(hostname, None, family=socket.AF_INET)
+        if infos:
+            return infos[0][4][0]
     except socket.gaierror:
-        return None
+        logger.debug("DNS resolution failed for %s", hostname)
+    return None
 
 
-def _check_network_rules(target_url: str, policy: Policy) -> PolicyDecision | None:
+async def _check_network_rules(target_url: str, policy: Policy) -> PolicyDecision | None:
     """Check if target URL is denied by network rules."""
     parsed = urlparse(target_url)
     hostname = parsed.hostname or ""
@@ -34,7 +42,7 @@ def _check_network_rules(target_url: str, policy: Policy) -> PolicyDecision | No
         target_ip = ipaddress.ip_address(hostname)
     except ValueError:
         # It's a hostname, resolve it
-        resolved = _resolve_host(hostname)
+        resolved = await _resolve_host(hostname)
         if resolved:
             try:
                 target_ip = ipaddress.ip_address(resolved)
@@ -68,7 +76,6 @@ def _check_tool_permissions(
     perms = policy.agent_rules.get(agent_id)
 
     if perms is None:
-        # No rules for this agent — deny by default
         return PolicyDecision(
             allowed=False,
             reason=f"No policy rules defined for agent '{agent_id}' — denied by default",
@@ -83,14 +90,13 @@ def _check_tool_permissions(
                 )
             return None  # Explicitly allowed
 
-    # No matching rule found — deny by default
     return PolicyDecision(
         allowed=False,
         reason=f"No matching policy rule for agent '{agent_id}' using tool '{tool_name}' — denied by default",
     )
 
 
-def evaluate_request(
+async def evaluate_request(
     target_url: str,
     agent_id: str,
     tool_name: str,
@@ -98,7 +104,7 @@ def evaluate_request(
 ) -> PolicyDecision:
     """Evaluate a proxy request against the policy. Returns allow/deny decision."""
     # Check network rules first (SSRF prevention)
-    network_result = _check_network_rules(target_url, policy)
+    network_result = await _check_network_rules(target_url, policy)
     if network_result is not None:
         return network_result
 

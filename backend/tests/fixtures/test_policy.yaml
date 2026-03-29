@@ -1,0 +1,27 @@
+name: "Test Policy"
+version: "1.0"
+
+agent_rules:
+  test-agent:
+    - tool_name: "web_search"
+      allowed: true
+    - tool_name: "web_scrape"
+      allowed: true
+    - tool_name: "shell.*"
+      allowed: false
+    - tool_name: "file.write"
+      allowed: false
+
+  wildcard-agent:
+    - tool_name: "*"
+      allowed: true
+
+network_rules:
+  - pattern: "10.0.0.0/8"
+    action: "deny"
+    reason: "SSRF: internal network blocked"
+  - pattern: "169.254.169.254"
+    action: "deny"
+    reason: "SSRF: cloud metadata blocked"
+
+max_response_size_kb: 512

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 
 from audit.logger import log_event
@@ -9,6 +10,8 @@ from policy.engine import PolicyDecision, evaluate_request
 from policy.models import Policy
 from proxy.client import forward_request
 
+logger = logging.getLogger("clawguard.proxy")
+
 
 async def handle_proxy_request(
     request: ProxyRequest, policy: Policy
@@ -17,7 +20,7 @@ async def handle_proxy_request(
     start = time.time()
 
     # --- Step 1: Policy check (before forwarding) ---
-    decision = evaluate_request(
+    decision = await evaluate_request(
         target_url=request.target_url,
         agent_id=request.agent_id,
         tool_name=request.tool_name,
@@ -59,6 +62,7 @@ async def handle_proxy_request(
             body=request.body,
         )
     except Exception as e:
+        logger.error("Forward failed for %s: %s", request.target_url, e, exc_info=True)
         elapsed = int((time.time() - start) * 1000)
         response = ProxyResponse(
             status_code=502,
