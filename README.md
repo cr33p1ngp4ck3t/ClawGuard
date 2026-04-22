@@ -412,7 +412,7 @@ cp .env.example .env
 ## Project Structure
 
 ```
-openclaw-vienna/
+clawguard/
 ├── backend/
 │   ├── main.py                  # FastAPI app, routes, lifespan
 │   ├── config.py                # Environment-based settings
