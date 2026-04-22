@@ -59,8 +59,8 @@ Dashboard (Next.js) <-- WebSocket live feed
 
 ```bash
 # Clone the repo
-git clone <repo-url>
-cd openclaw-vienna
+git clone https://github.com/cr33p1ngp4ck3t/ClawGuard
+cd clawguard
 
 # Copy env config
 cp .env.example .env
