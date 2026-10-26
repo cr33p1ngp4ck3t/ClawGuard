@@ -9,7 +9,7 @@ class ProxyResult(BaseModel):
     status_code: int
     headers: dict[str, str] = Field(default_factory=dict)
     body: str | dict = ""
-    blocked: bool = False
+    blocked: bool
     risk_level: str = "low"
     threats_detected: list[str] = Field(default_factory=list)
     policy_rule: str | None = None

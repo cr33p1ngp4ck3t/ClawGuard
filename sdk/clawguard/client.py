@@ -1,6 +1,8 @@
 """ClawGuard SDK client."""
 from __future__ import annotations
 
+import os
+
 import httpx
 
 from clawguard.exceptions import ClawGuardError, RequestBlockedError
@@ -10,11 +12,13 @@ from clawguard.types import ProxyResult, ScanResult
 class ClawGuardClient:
     """Client for interacting with a ClawGuard server.
 
+    api_key defaults to CLAWGUARD_API_KEY. agent_id must match the identity
+    configured for that key. Upstream headers stay in the request envelope.
+
     Usage:
-        client = ClawGuardClient()  # defaults to localhost:8000
+        client = ClawGuardClient(agent_id="research-agent")  # reads CLAWGUARD_API_KEY
         result = await client.check(
             target_url="https://api.example.com/data",
-            agent_id="my-agent",
             tool_name="web_search",
         )
         if result.blocked:
@@ -26,10 +30,29 @@ class ClawGuardClient:
         base_url: str = "http://localhost:8000",
         agent_id: str = "sdk-agent",
         timeout: float = 10.0,
+        api_key: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.agent_id = agent_id
         self.timeout = timeout
+        self.api_key = api_key if api_key is not None else os.getenv("CLAWGUARD_API_KEY")
+
+    @property
+    def _auth_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+
+    @staticmethod
+    def _http_error(error: httpx.HTTPError) -> ClawGuardError:
+        if isinstance(error, httpx.HTTPStatusError):
+            reason = error.response.reason_phrase
+            try:
+                detail = error.response.json().get("detail")
+                if isinstance(detail, str):
+                    reason = detail
+            except (ValueError, AttributeError):
+                pass
+            return ClawGuardError(f"ClawGuard returned HTTP {error.response.status_code}: {reason}")
+        return ClawGuardError(f"Failed to reach ClawGuard: {error}")
 
     async def check(
         self,
@@ -65,11 +88,13 @@ class ClawGuardClient:
         }
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as http:
-                resp = await http.post(f"{self.base_url}/proxy", json=payload)
+                resp = await http.post(f"{self.base_url}/proxy", json=payload, headers=self._auth_headers)
                 resp.raise_for_status()
                 result = ProxyResult(**resp.json())
         except httpx.HTTPError as e:
-            raise ClawGuardError(f"Failed to reach ClawGuard: {e}") from e
+            raise self._http_error(e) from e
+        except (ValueError, TypeError) as e:
+            raise ClawGuardError("ClawGuard returned an invalid response") from e
 
         if raise_on_block and result.blocked:
             raise RequestBlockedError(
@@ -100,11 +125,13 @@ class ClawGuardClient:
         }
         try:
             with httpx.Client(timeout=self.timeout) as http:
-                resp = http.post(f"{self.base_url}/proxy", json=payload)
+                resp = http.post(f"{self.base_url}/proxy", json=payload, headers=self._auth_headers)
                 resp.raise_for_status()
                 result = ProxyResult(**resp.json())
         except httpx.HTTPError as e:
-            raise ClawGuardError(f"Failed to reach ClawGuard: {e}") from e
+            raise self._http_error(e) from e
+        except (ValueError, TypeError) as e:
+            raise ClawGuardError("ClawGuard returned an invalid response") from e
 
         if raise_on_block and result.blocked:
             raise RequestBlockedError(
@@ -128,11 +155,13 @@ class ClawGuardClient:
         }
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as http:
-                resp = await http.post(f"{self.base_url}/api/scan", json=payload)
+                resp = await http.post(f"{self.base_url}/api/scan", json=payload, headers=self._auth_headers)
                 resp.raise_for_status()
                 return ScanResult(**resp.json())
         except httpx.HTTPError as e:
-            raise ClawGuardError(f"Failed to reach ClawGuard: {e}") from e
+            raise self._http_error(e) from e
+        except (ValueError, TypeError) as e:
+            raise ClawGuardError("ClawGuard returned an invalid response") from e
 
     async def health(self) -> dict:
         """Check ClawGuard server health."""
@@ -142,14 +171,18 @@ class ClawGuardClient:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPError as e:
-            raise ClawGuardError(f"Failed to reach ClawGuard: {e}") from e
+            raise self._http_error(e) from e
+        except ValueError as e:
+            raise ClawGuardError("ClawGuard returned an invalid response") from e
 
     async def stats(self) -> dict:
-        """Get aggregate statistics from ClawGuard."""
+        """Get aggregate statistics; this client must use an admin key."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as http:
-                resp = await http.get(f"{self.base_url}/api/stats")
+                resp = await http.get(f"{self.base_url}/api/stats", headers=self._auth_headers)
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPError as e:
-            raise ClawGuardError(f"Failed to reach ClawGuard: {e}") from e
+            raise self._http_error(e) from e
+        except ValueError as e:
+            raise ClawGuardError("ClawGuard returned an invalid response") from e
