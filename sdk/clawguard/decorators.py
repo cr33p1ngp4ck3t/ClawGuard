@@ -7,7 +7,7 @@ import inspect
 from typing import Any, Callable
 
 from clawguard.client import ClawGuardClient
-from clawguard.exceptions import RequestBlockedError
+from clawguard.exceptions import ClawGuardError, RequestBlockedError
 
 
 def protect(
@@ -15,6 +15,7 @@ def protect(
     agent_id: str = "sdk-agent",
     tool_name: str | None = None,
     raise_on_threat: bool = True,
+    api_key: str | None = None,
 ) -> Callable:
     """Decorator that scans a function's return value through ClawGuard.
 
@@ -26,6 +27,7 @@ def protect(
         agent_id: Agent identifier for policy/audit.
         tool_name: Tool name (defaults to function name).
         raise_on_threat: If True, raises RequestBlockedError on detection.
+        api_key: Gateway bearer key (defaults to CLAWGUARD_API_KEY).
 
     Usage:
         @protect(agent_id="my-agent")
@@ -39,13 +41,19 @@ def protect(
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             result = await func(*args, **kwargs)
-            return await _scan_result(result, base_url, agent_id, resolved_tool, raise_on_threat)
+            return await _scan_result(result, base_url, agent_id, resolved_tool, raise_on_threat, api_key)
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+            else:
+                raise ClawGuardError("Use an async protected function inside a running event loop")
             result = func(*args, **kwargs)
-            return asyncio.get_event_loop().run_until_complete(
-                _scan_result(result, base_url, agent_id, resolved_tool, raise_on_threat)
+            return asyncio.run(
+                _scan_result(result, base_url, agent_id, resolved_tool, raise_on_threat, api_key)
             )
 
         if inspect.iscoroutinefunction(func):
@@ -61,13 +69,14 @@ async def _scan_result(
     agent_id: str,
     tool_name: str,
     raise_on_threat: bool,
+    api_key: str | None,
 ) -> Any:
     """Scan a result through ClawGuard. Returns the result if clean."""
     content = str(result)
     if not content:
         return result
 
-    client = ClawGuardClient(base_url=base_url, agent_id=agent_id)
+    client = ClawGuardClient(base_url=base_url, agent_id=agent_id, api_key=api_key)
     scan = await client.scan(content=content, tool_name=tool_name)
 
     if scan.is_threat and raise_on_threat:

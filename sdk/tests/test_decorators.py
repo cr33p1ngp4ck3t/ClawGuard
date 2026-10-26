@@ -6,10 +6,47 @@ import respx
 from httpx import Response
 
 from clawguard.decorators import protect
-from clawguard.exceptions import RequestBlockedError
+from clawguard.exceptions import ClawGuardError, RequestBlockedError
 
 
 class TestProtectDecorator:
+    @respx.mock
+    def test_sync_function_uses_environment_key_without_an_event_loop(self, monkeypatch):
+        monkeypatch.setenv("CLAWGUARD_API_KEY", "agent-key")
+        route = respx.post("http://localhost:8000/api/scan").respond(200, json={
+            "is_threat": False, "risk_level": "low",
+        })
+
+        @protect(agent_id="research-agent")
+        def fetch_page():
+            return "safe content"
+
+        assert fetch_page() == "safe content"
+        assert route.calls[0].request.headers["Authorization"] == "Bearer agent-key"
+
+    @pytest.mark.asyncio
+    async def test_sync_function_inside_running_loop_has_clear_error(self):
+        @protect()
+        def fetch_page():
+            return "content"
+
+        with pytest.raises(ClawGuardError, match="async"):
+            fetch_page()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_gateway_key_passes_to_scan(self):
+        route = respx.post("http://localhost:8000/api/scan").respond(200, json={
+            "is_threat": False, "risk_level": "low",
+        })
+
+        @protect(agent_id="research-agent", api_key="agent-key")
+        async def fetch_page():
+            return "safe content"
+
+        assert await fetch_page() == "safe content"
+        assert route.calls[0].request.headers["Authorization"] == "Bearer agent-key"
+
     @pytest.mark.asyncio
     @respx.mock
     async def test_clean_output_passes(self):
