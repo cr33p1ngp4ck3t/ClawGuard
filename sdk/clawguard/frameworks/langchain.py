@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-import httpx
+from clawguard.client import ClawGuardClient
+from clawguard.exceptions import ClawGuardError
 
 
 def clawguard_tool_wrapper(
@@ -11,53 +12,42 @@ def clawguard_tool_wrapper(
     tool_name: str,
     base_url: str = "http://localhost:8000",
     agent_id: str = "langchain-agent",
+    api_key: str | None = None,
 ) -> Callable:
-    """Wrap a LangChain tool function to route calls through ClawGuard.
+    """Wrap a URL-fetching LangChain tool to route GET calls through ClawGuard.
 
     The wrapper sends the tool's target URL through the ClawGuard proxy
-    instead of calling it directly.
+    instead of calling it directly. It replaces the function with a guarded
+    GET request; api_key defaults to CLAWGUARD_API_KEY.
 
     Usage:
         from langchain.tools import Tool
         from clawguard.frameworks.langchain import clawguard_tool_wrapper
 
-        def raw_search(query: str) -> str:
-            return httpx.get(f"https://api.search.com/search?q={query}").text
+        def fetch_page(url: str) -> str:
+            return httpx.get(url).text
 
-        guarded_search = clawguard_tool_wrapper(
-            raw_search, tool_name="web_search"
+        guarded_fetch = clawguard_tool_wrapper(
+            fetch_page, tool_name="fetch_page", agent_id="research-agent"
         )
 
-        search_tool = Tool(
-            name="web_search",
-            func=guarded_search,
-            description="Search the web (secured by ClawGuard)",
+        fetch_tool = Tool(
+            name="fetch_page",
+            func=guarded_fetch,
+            description="Fetch an approved URL through ClawGuard",
         )
     """
 
     def wrapper(*args: Any, **kwargs: Any) -> str:
-        # Extract URL from first arg or 'url' kwarg
-        query = args[0] if args else kwargs.get("query", "")
-        target_url = str(query) if query.startswith("http") else f"https://api.example.com/search?q={query}"
-
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.post(
-                f"{base_url}/proxy",
-                json={
-                    "target_url": target_url,
-                    "method": "GET",
-                    "agent_id": agent_id,
-                    "tool_name": tool_name,
-                },
-            )
-            data = resp.json()
-
-        if data.get("blocked"):
-            threats = ", ".join(data.get("threats_detected", []))
-            return f"[ClawGuard] Request blocked: {threats}"
-
-        body = data.get("body", "")
-        return str(body)
+        target_url = args[0] if args else kwargs.get("url", kwargs.get("query", ""))
+        if not isinstance(target_url, str) or not target_url.startswith(("https://", "http://")):
+            raise ClawGuardError("The guarded URL-fetch tool requires an explicit HTTP(S) URL")
+        client = ClawGuardClient(base_url=base_url, agent_id=agent_id, api_key=api_key)
+        result = client.check_sync(target_url, tool_name=tool_name)
+        if result.blocked:
+            reason = ", ".join(result.threats_detected) or result.policy_rule or "blocked by policy"
+            return f"[ClawGuard] Request blocked: {reason}"
+        return str(result.body)
 
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__
