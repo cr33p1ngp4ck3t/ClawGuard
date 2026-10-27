@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class RiskLevel(str, Enum):
@@ -23,12 +23,13 @@ class EventType(str, Enum):
 
 
 class ProxyRequest(BaseModel):
-    target_url: str
-    method: str = "GET"
+    model_config = ConfigDict(extra="forbid")
+    target_url: str = Field(max_length=4096)
+    method: str = Field(default="GET", pattern="^(GET|HEAD|POST)$")
     headers: dict[str, str] = Field(default_factory=dict)
     body: dict | str | None = None
-    agent_id: str = "unknown"
-    tool_name: str = "unknown"
+    agent_id: str = Field(default="unknown", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
+    tool_name: str = Field(default="unknown", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
 
 
 class ProxyResponse(BaseModel):

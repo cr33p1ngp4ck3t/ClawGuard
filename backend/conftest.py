@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import json
 from unittest.mock import AsyncMock
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from httpx import ASGITransport, AsyncClient
 _test_db = tempfile.mktemp(suffix=".db")
 os.environ["DB_PATH"] = _test_db
 os.environ["POLICY_PATH"] = str(Path(__file__).parent / "tests" / "fixtures" / "test_policy.yaml")
+os.environ["GROQ_API_KEY"] = ""
+os.environ["CLAWGUARD_AGENT_KEYS"] = json.dumps({"test-agent": "t" * 32, "wildcard-agent": "w" * 32})
+os.environ["CLAWGUARD_ADMIN_KEY"] = "a" * 32
 
 from audit.db import init_db  # noqa: E402
 from main import app  # noqa: E402
@@ -37,7 +41,7 @@ async def test_db():
 async def client(test_db):
     """Async test client for the FastAPI app."""
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+    async with AsyncClient(transport=transport, base_url="http://testserver", headers={"Authorization": "Bearer " + "t" * 32}) as ac:
         yield ac
 
 

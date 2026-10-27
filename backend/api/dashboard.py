@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
+from auth import require_admin
 
 from audit.db import get_stats, query_events
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 
 
 @router.get("/events")
 async def list_events(
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     risk_level: str | None = None,
     agent_id: str | None = None,
 ):

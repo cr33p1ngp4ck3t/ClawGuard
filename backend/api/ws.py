@@ -13,12 +13,12 @@ class ConnectionManager:
         self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
         self.active_connections.append(websocket)
         logger.debug("WebSocket client connected (%d total)", len(self.active_connections))
 
     def disconnect(self, websocket: WebSocket) -> None:
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
         logger.debug("WebSocket client disconnected (%d remaining)", len(self.active_connections))
 
     async def broadcast(self, message: dict) -> None:
@@ -26,12 +26,13 @@ class ConnectionManager:
         disconnected: list[WebSocket] = []
         for connection in self.active_connections:
             try:
-                await connection.send_text(data)
+                import asyncio
+                await asyncio.wait_for(connection.send_text(data), timeout=1)
             except Exception:
                 logger.warning("Failed to send WS message, removing client", exc_info=True)
                 disconnected.append(connection)
         for conn in disconnected:
-            self.active_connections.remove(conn)
+            self.disconnect(conn)
 
 
 manager = ConnectionManager()
