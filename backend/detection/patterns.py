@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 import re
+from typing import TypedDict
 
 from audit.models import RiskLevel
 
-INJECTION_PATTERNS = [
+class InjectionPattern(TypedDict):
+    name: str
+    pattern: re.Pattern[str]
+    severity: RiskLevel
+    weight: float
+    description: str
+
+
+INJECTION_PATTERNS: list[InjectionPattern] = [
     {
         "name": "IGNORE_PREVIOUS",
         "pattern": re.compile(
@@ -57,7 +66,7 @@ INJECTION_PATTERNS = [
     {
         "name": "DELIMITER_INJECTION",
         "pattern": re.compile(
-            r"(---+\s*END\s*(OF\s+)?(CONTEXT|INPUT|DATA)|={3,}\s*NEW\s*INSTRUCTIONS|###\s*OVERRIDE)",
+            r"((?<!-)-{3,}+\s*END\s*(OF\s+)?(CONTEXT|INPUT|DATA)|(?<!=)={3,}+\s*NEW\s*INSTRUCTIONS|###\s*OVERRIDE)",
             re.IGNORECASE,
         ),
         "severity": RiskLevel.HIGH,

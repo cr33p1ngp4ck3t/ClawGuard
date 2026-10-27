@@ -3,11 +3,18 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from audit.models import PatternMatch, RiskLevel
+from audit.models import PatternMatch
 from detection.patterns import INJECTION_PATTERNS
 
 # Zero-width and invisible Unicode characters
 _ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u200e\u200f\u2060\u2061\u2062\u2063\ufeff]")
+_TOOL_PREFIX = re.compile(r"call\s+function|execute\s+tool|run\s+command|invoke\s+api", re.IGNORECASE)
+_TOOL_COMMAND = re.compile(r"rm\s+-rf|curl|wget|eval|exec|subprocess", re.IGNORECASE)
+
+
+def _tool_command_present(text: str) -> bool:
+    prefix = _TOOL_PREFIX.search(text)
+    return prefix is not None and _TOOL_COMMAND.search(text, prefix.end()) is not None
 
 
 def normalize_text(text: str) -> str:
@@ -21,6 +28,8 @@ def scan_for_injections(text: str) -> list[PatternMatch]:
     matches: list[PatternMatch] = []
 
     for pattern_def in INJECTION_PATTERNS:
+        if pattern_def["name"] == "TOOL_CALL_INJECTION" and not _tool_command_present(text):
+            continue
         for match in pattern_def["pattern"].finditer(text):
             matches.append(
                 PatternMatch(
@@ -50,7 +59,13 @@ def scan_for_injections_weighted(text: str) -> tuple[list[PatternMatch], float]:
 
     for target in targets:
         for pattern_def in INJECTION_PATTERNS:
-            for match in pattern_def["pattern"].finditer(target):
+            if pattern_def["name"] in seen_patterns:
+                continue
+            # Avoid rescanning the entire suffix at every repeated tool prefix.
+            if pattern_def["name"] == "TOOL_CALL_INJECTION" and not _tool_command_present(target):
+                continue
+            match = pattern_def["pattern"].search(target)
+            if match:
                 matches.append(
                     PatternMatch(
                         pattern_name=pattern_def["name"],

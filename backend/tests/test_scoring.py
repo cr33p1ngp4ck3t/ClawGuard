@@ -1,11 +1,16 @@
 """Tests for weighted scoring in the regex detector."""
 from __future__ import annotations
 
-from audit.models import RiskLevel
 from detection.regex_detector import scan_for_injections_weighted
 
 
 class TestWeightedScoring:
+    def test_repeated_payload_keeps_one_evidence_record_per_pattern(self):
+        matches, score = scan_for_injections_weighted("\u200b" * 10000)
+        assert len(matches) == 1
+        assert matches[0].pattern_name == "UNICODE_EVASION"
+        assert score == 0.4
+
     def test_no_match_zero_score(self):
         matches, score = scan_for_injections_weighted("The weather is nice today")
         assert matches == []
