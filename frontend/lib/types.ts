@@ -35,15 +35,7 @@ export interface DashboardStats {
   avg_latency_ms: number;
 }
 
-export interface DemoResult {
-  name: string;
-  blocked: boolean;
-  risk_level: RiskLevel;
-  threats_detected: string[];
-  policy_rule: string | null;
-}
-
 export interface WebSocketMessage {
-  type: "new_event" | "stats_update";
-  payload: AuditEvent | DashboardStats;
+  type: "new_event" | "stats_update" | "authenticated";
+  payload?: AuditEvent | DashboardStats;
 }

@@ -34,7 +34,7 @@ export function TrafficFeed({ events }: TrafficFeedProps) {
       <div className="text-center py-12 text-zinc-500">
         <p className="text-lg">No events yet</p>
         <p className="text-sm mt-1">
-          Run the attack demo to see traffic flow through ClawGuard
+          Send a research agent request through ClawGuard to an approved website or API
         </p>
       </div>
     );
@@ -96,9 +96,15 @@ export function TrafficFeed({ events }: TrafficFeedProps) {
           )}
 
           {event.policy_rule && (
-            <p className="mt-1.5 text-xs text-orange-400/80 font-mono truncate">
-              Policy: {event.policy_rule}
+            <p className="mt-1.5 text-xs text-orange-400/80 break-words">
+              Reason: {event.policy_rule}
             </p>
+          )}
+          {event.detection_details?.llm_explanation && (
+            <p className="mt-1.5 text-xs text-zinc-400 break-words">{event.detection_details.llm_explanation}</p>
+          )}
+          {event.response_summary?.startsWith("Error:") && (
+            <p className="mt-1.5 text-xs text-red-300 break-words">{event.response_summary}</p>
           )}
         </div>
       ))}
