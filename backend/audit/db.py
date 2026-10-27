@@ -5,6 +5,7 @@ import json
 import aiosqlite
 
 from config import DB_PATH
+from audit.redaction import redact_event
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS audit_events (
@@ -99,7 +100,7 @@ async def query_events(
                         d["detection_details"] = json.loads(d["detection_details"])
                     except json.JSONDecodeError:
                         pass
-                results.append(d)
+                results.append(redact_event(d))
             return results
 
 
