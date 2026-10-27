@@ -1,14 +1,12 @@
 """Tests for policy evaluation and loader."""
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from policy.engine import PolicyDecision, _check_tool_permissions, evaluate_request
+from policy.engine import _check_tool_permissions, evaluate_request
 from policy.loader import PolicyLoadError, load_policy
-from policy.models import NetworkRule, Policy, ToolPermission
 
 
 @pytest.fixture
@@ -44,8 +42,13 @@ class TestToolPermissions:
         assert result is not None
         assert not result.allowed
 
-    def test_wildcard_agent_allows_all(self, policy):
-        result = _check_tool_permissions("wildcard-agent", "anything.here", policy)
+    def test_tool_names_are_exact(self, policy):
+        result = _check_tool_permissions("test-agent", "web_search.extra", policy)
+        assert result is not None
+        assert not result.allowed
+
+    def test_second_agent_exact_tool_is_allowed(self, policy):
+        result = _check_tool_permissions("wildcard-agent", "web_search", policy)
         assert result is None
 
 
@@ -70,7 +73,7 @@ class TestNetworkRules:
     async def test_public_url_allowed(self, policy):
         from policy.engine import _check_network_rules
         result = await _check_network_rules("https://api.example.com/data", policy)
-        assert result is None
+        assert result.allowed
 
 
 # --- Full evaluate_request ---

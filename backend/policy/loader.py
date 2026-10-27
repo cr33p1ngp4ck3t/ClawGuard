@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from policy.models import NetworkRule, Policy, ToolPermission
+from policy.models import Policy
 
 logger = logging.getLogger("clawguard.policy.loader")
 
@@ -41,22 +41,10 @@ def load_policy(path: str) -> Policy:
 
     # Build model
     try:
-        agent_rules: dict[str, list[ToolPermission]] = {}
-        for agent_id, perms in raw.get("agent_rules", {}).items():
-            agent_rules[agent_id] = [ToolPermission(**p) for p in perms]
-
-        network_rules = [NetworkRule(**r) for r in raw.get("network_rules", [])]
-
-        policy = Policy(
-            name=raw["name"],
-            version=raw.get("version", "1.0"),
-            agent_rules=agent_rules,
-            network_rules=network_rules,
-            max_response_size_kb=raw.get("max_response_size_kb", 1024),
-        )
+        policy = Policy.model_validate(raw)
     except (TypeError, ValueError) as e:
         raise PolicyLoadError(f"Invalid policy structure in {policy_path}: {e}")
 
     logger.info("Loaded policy '%s' v%s (%d agents, %d network rules)",
-                policy.name, policy.version, len(agent_rules), len(network_rules))
+                policy.name, policy.version, len(policy.agent_rules), len(policy.network_rules))
     return policy

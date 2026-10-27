@@ -1,116 +1,94 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
-import fnmatch
 import ipaddress
-import logging
 import socket
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
 from policy.models import Policy
+from policy.urls import origin, parse_target
 
-logger = logging.getLogger("clawguard.policy")
 
-
-@dataclass
+@dataclass(frozen=True)
 class PolicyDecision:
     allowed: bool
     reason: str
+    addresses: tuple[str, ...] = ()
 
 
-async def _resolve_host(hostname: str) -> str | None:
-    """Resolve hostname to IP asynchronously. Returns None if resolution fails."""
-    loop = asyncio.get_running_loop()
+async def _resolve_host(hostname: str) -> tuple[str, ...]:
     try:
-        infos = await loop.getaddrinfo(hostname, None, family=socket.AF_INET)
-        if infos:
-            return infos[0][4][0]
-    except socket.gaierror:
-        logger.debug("DNS resolution failed for %s", hostname)
-    return None
-
-
-async def _check_network_rules(target_url: str, policy: Policy) -> PolicyDecision | None:
-    """Check if target URL is denied by network rules."""
-    parsed = urlparse(target_url)
-    hostname = parsed.hostname or ""
-
-    # Try to parse as IP directly
-    target_ip = None
-    try:
-        target_ip = ipaddress.ip_address(hostname)
+        return (str(ipaddress.ip_address(hostname)),)
     except ValueError:
-        # It's a hostname, resolve it
-        resolved = await _resolve_host(hostname)
-        if resolved:
-            try:
-                target_ip = ipaddress.ip_address(resolved)
-            except ValueError:
-                pass
+        pass
+    try:
+        async with asyncio.timeout(5):
+            infos = await asyncio.get_running_loop().getaddrinfo(
+                hostname, 443, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM,
+            )
+        return tuple(dict.fromkeys(str(info[4][0]) for info in infos))
+    except (OSError, TimeoutError):
+        return ()
 
-    for rule in policy.network_rules:
-        if rule.action != "deny":
-            continue
 
-        # Check exact hostname/IP match
-        if hostname == rule.pattern:
-            return PolicyDecision(allowed=False, reason=rule.reason)
+def is_public_address(value: str) -> bool:
+    address = ipaddress.ip_address(value)
+    if not address.is_global or address.is_multicast or address.is_reserved:
+        return False
+    if isinstance(address, ipaddress.IPv6Address):
+        # Translation and tunnel prefixes can embed a forbidden IPv4 address.
+        if address.ipv4_mapped or address.sixtofour or address.teredo:
+            return False
+        if any(address in ipaddress.ip_network(prefix) for prefix in ('64:ff9b::/96', '64:ff9b:1::/48')):
+            return False
+    return True
 
-        # Check CIDR match
-        if target_ip:
-            try:
-                network = ipaddress.ip_network(rule.pattern, strict=False)
-                if target_ip in network:
-                    return PolicyDecision(allowed=False, reason=rule.reason)
-            except ValueError:
-                pass
 
+async def _check_network_rules(target_url: str, policy: Policy) -> PolicyDecision:
+    try:
+        url = parse_target(target_url)
+        hostname = url.raw_host.decode('ascii')
+        addresses = await _resolve_host(hostname)
+        if not addresses:
+            return PolicyDecision(False, 'Destination DNS resolution failed')
+        for value in addresses:
+            if not is_public_address(value):
+                return PolicyDecision(False, 'Non-public destination blocked')
+            address = ipaddress.ip_address(value)
+            for rule in policy.network_rules:
+                if hostname == rule.pattern:
+                    return PolicyDecision(False, rule.reason)
+                try:
+                    network = ipaddress.ip_network(rule.pattern, strict=False)
+                except ValueError:
+                    continue
+                if address in network:
+                    return PolicyDecision(False, rule.reason)
+        return PolicyDecision(True, 'Destination approved', addresses)
+    except ValueError:
+        return PolicyDecision(False, 'Invalid destination URL or address')
+
+
+def _check_tool_permissions(agent_id: str, tool_name: str, policy: Policy) -> PolicyDecision | None:
+    permissions = policy.agent_rules.get(agent_id, [])
+    matches = [perm for perm in permissions if tool_name == perm.tool_name]
+    if not matches or any(not perm.allowed for perm in matches):
+        return PolicyDecision(False, f"Tool not permitted for agent '{agent_id}'")
     return None
-
-
-def _check_tool_permissions(
-    agent_id: str, tool_name: str, policy: Policy
-) -> PolicyDecision | None:
-    """Check if agent is allowed to use this tool."""
-    perms = policy.agent_rules.get(agent_id)
-
-    if perms is None:
-        return PolicyDecision(
-            allowed=False,
-            reason=f"No policy rules defined for agent '{agent_id}' — denied by default",
-        )
-
-    for perm in perms:
-        if fnmatch.fnmatch(tool_name, perm.tool_name):
-            if not perm.allowed:
-                return PolicyDecision(
-                    allowed=False,
-                    reason=f"Agent '{agent_id}' denied access to tool '{tool_name}' by policy",
-                )
-            return None  # Explicitly allowed
-
-    return PolicyDecision(
-        allowed=False,
-        reason=f"No matching policy rule for agent '{agent_id}' using tool '{tool_name}' — denied by default",
-    )
 
 
 async def evaluate_request(
-    target_url: str,
-    agent_id: str,
-    tool_name: str,
-    policy: Policy,
+    target_url: str, agent_id: str, tool_name: str, policy: Policy, method: str = 'GET',
 ) -> PolicyDecision:
-    """Evaluate a proxy request against the policy. Returns allow/deny decision."""
-    # Check network rules first (SSRF prevention)
-    network_result = await _check_network_rules(target_url, policy)
-    if network_result is not None:
-        return network_result
-
-    # Check tool permissions
     tool_result = _check_tool_permissions(agent_id, tool_name, policy)
-    if tool_result is not None:
+    if tool_result:
         return tool_result
-
-    return PolicyDecision(allowed=True, reason="Request allowed by policy")
+    if method not in policy.allowed_methods.get(agent_id, ['GET', 'HEAD']):
+        return PolicyDecision(False, 'HTTP method not permitted')
+    try:
+        url = parse_target(target_url)
+    except ValueError:
+        return PolicyDecision(False, 'Invalid destination URL')
+    if origin(url) not in policy.allowed_origins.get(agent_id, []):
+        return PolicyDecision(False, 'Destination origin not approved for this agent')
+    return await _check_network_rules(str(url), policy)

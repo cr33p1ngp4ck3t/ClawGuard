@@ -7,13 +7,11 @@ agent_rules:
       allowed: true
     - tool_name: "web_scrape"
       allowed: true
-    - tool_name: "shell.*"
-      allowed: false
     - tool_name: "file.write"
       allowed: false
 
   wildcard-agent:
-    - tool_name: "*"
+    - tool_name: "web_search"
       allowed: true
 
 network_rules:
@@ -25,3 +23,11 @@ network_rules:
     reason: "SSRF: cloud metadata blocked"
 
 max_response_size_kb: 512
+
+allowed_origins:
+  test-agent:
+    - "https://api.example.com"
+    - "https://unreachable.invalid"
+  wildcard-agent:
+    - "https://api.example.com"
+    - "https://unreachable.invalid"

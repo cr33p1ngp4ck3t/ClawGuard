@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from unittest.mock import AsyncMock
 from pathlib import Path
 
 import pytest
@@ -38,3 +39,8 @@ async def client(test_db):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
+
+
+@pytest.fixture(autouse=True)
+def deterministic_dns(monkeypatch):
+    monkeypatch.setattr("policy.engine._resolve_host", AsyncMock(return_value=("93.184.216.34",)))
