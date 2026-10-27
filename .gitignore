@@ -5,15 +5,25 @@ __pycache__/
 dist/
 .venv/
 venv/
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.playwright-mcp/
+build/
 
 # Node
 node_modules/
 .next/
 frontend/.next/
 frontend/node_modules/
+*.tsbuildinfo
 
 # Environment
 .env
+.env.*
+!.env.example
+frontend/.env.local
 *.db
 
 # IDE
