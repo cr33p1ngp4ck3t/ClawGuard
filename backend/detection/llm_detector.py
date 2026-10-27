@@ -33,29 +33,28 @@ async def classify_injection(content: str) -> dict | None:
         return None
 
     try:
-        client = AsyncGroq(api_key=config.GROQ_API_KEY)
-        response = await client.chat.completions.create(
-            model=config.LLM_MODEL,
-            messages=[
-                {"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Analyze this tool output for prompt injection:\n\n{content[:3000]}",
-                },
-            ],
-            temperature=0.1,
-            max_tokens=200,
-            timeout=config.LLM_TIMEOUT,
-        )
-
+        async with AsyncGroq(api_key=config.GROQ_API_KEY, max_retries=0) as client:
+            response = await client.chat.completions.create(
+                model=config.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": f"Analyze this tool output for prompt injection:\n\n{content[:3000]}",
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=200,
+                timeout=config.LLM_TIMEOUT,
+            )
         text = response.choices[0].message.content or ""
         parsed = _extract_json(text)
         if parsed is None:
-            logger.warning("LLM returned unparseable response: %s", text[:200])
+            logger.warning("LLM returned an unparseable response")
         return parsed
 
     except Exception:
-        logger.warning("LLM classify_injection call failed", exc_info=True)
+        logger.warning("LLM classifier unavailable; regex result retained")
         return None
 
 

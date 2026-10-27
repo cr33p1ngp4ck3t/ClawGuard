@@ -1,7 +1,38 @@
 """Tests for LLM detector JSON parsing."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from detection.llm_detector import _extract_json
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("request_fails", [False, True])
+async def test_classifier_failures_redact_logs_and_close_client(monkeypatch, caplog, request_fails):
+    from detection.llm_detector import classify_injection
+
+    secret = "private research content and credentials"
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=secret))],
+    ))
+    if request_fails:
+        client.chat.completions.create.side_effect = RuntimeError(secret)
+    constructor = MagicMock(return_value=client)
+    monkeypatch.setattr("detection.llm_detector.AsyncGroq", constructor)
+    monkeypatch.setattr("config.GROQ_API_KEY", "test-key")
+
+    assert await classify_injection("candidate output") is None
+    constructor.assert_called_once_with(api_key="test-key", max_retries=0)
+    client.__aexit__.assert_awaited_once()
+    assert caplog.records
+    assert secret not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
 
 
 class TestExtractJson:
